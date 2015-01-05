@@ -713,7 +713,7 @@ static int jsongen_notification_output(wb_callback_t *cb, const notification_t *
 	const char *severity_type = "";
 	static char name_buffer[MAX_METRIC_NAME_SIZE];
 
-	if ( notification->severity == NOTIF_FAILURE )
+	if ( notification->severity == NOTIF_OKAY )
 		severity_type = "OKAY";
 	else if ( notification->severity == NOTIF_WARNING )
 		severity_type = "WARNING";
