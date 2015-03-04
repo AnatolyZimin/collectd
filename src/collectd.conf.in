@@ -1280,6 +1280,7 @@
 #	<URL "http://example.com/collectd-post">
 #		TenantId "tenantid"
 #		ttlInSeconds 86400
+#		#MetricNum 20
 #		<AuthURL "example.com/collectd-post">
 #			User "collectd"
 #			Password "password"

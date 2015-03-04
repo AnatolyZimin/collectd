@@ -1390,7 +1390,7 @@ test_utils_vl_lookup_LDADD =
 TESTS = test_common test_utils_avltree test_utils_heap test_utils_mount test_utils_vl_lookup
 
 if BUILD_PLUGIN_WRITE_BLUEFLOOD
-check_PROGRAMS += test_blueflood1 test_blueflood2
+check_PROGRAMS += test_blueflood1 test_blueflood2 test_blueflood3
 test_blueflood1_SOURCES = tests/test_blueflood1.c tests/mock/plugin.c tests/test_blueflood_mock.c \
 daemon/common.c tests/mock/utils_time.c tests/mock/utils_cache.c
 test_blueflood1_CPPFLAGS = $(AM_CPPFLAGS) $(LTDLINCL) $(COVERAGE_CFLAGS)
@@ -1402,5 +1402,11 @@ daemon/common.c tests/mock/utils_time.c tests/mock/utils_cache.c
 test_blueflood2_CPPFLAGS = $(AM_CPPFLAGS) $(LTDLINCL) $(COVERAGE_CFLAGS)
 test_blueflood2_LDFLAGS = -lpthread $(COVERAGE_LDFLAGS)
 test_blueflood2_LDADD = 
-TESTS += test_blueflood1 test_blueflood2
+
+test_blueflood3_SOURCES = tests/test_blueflood3.c tests/mock/plugin.c tests/test_blueflood_mock.c \
+daemon/common.c tests/mock/utils_time.c tests/mock/utils_cache.c
+test_blueflood3_CPPFLAGS = $(AM_CPPFLAGS) $(LTDLINCL) $(COVERAGE_CFLAGS)
+test_blueflood3_LDFLAGS = -lpthread $(COVERAGE_LDFLAGS)
+test_blueflood3_LDADD = 
+TESTS += test_blueflood1 test_blueflood2 test_blueflood3
 endif

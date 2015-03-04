@@ -53,6 +53,7 @@
 #define MAX_URL_SIZE 128
 /* second count in day */
 #define DEFAULT_TTL 24 * 60 * 60
+#define DEFAULT_METRIC_NUM 0
 
 /* used by transport */
 #define CURL_SETOPT_RETURN_ERR(curl, option, parameter)\
@@ -106,6 +107,7 @@
 #define CONF_URL "URL"  
 #define CONF_AUTH_URL "AuthURL"
 #define CONF_TENANTID "TenantId"
+#define CONF_METRIC_NUM "MetricNum"
 
 #define BLUEFLOOD_API_VERSION "v2.0"
 
@@ -121,6 +123,7 @@ struct wb_transport_s;
 typedef struct wb_callback_s
 {
 	int ttl;
+	int metric_num;
 	yajl_gen yajl_gen;
 	/* The successfull_send flag holds 0 if last metrics send
 	   attempt was successful, otherwise it's != 0.  Not zero value
@@ -129,6 +132,7 @@ typedef struct wb_callback_s
 	   to resend metrics every time at read/flush callbacks. */
 	int successfull_send;
 	pthread_mutex_t send_lock;
+	int metrics_count;
 } wb_callback_t;
 
 /**************** curl transport declaration *****************/
@@ -523,6 +527,7 @@ static int send_json(yajl_gen *gen)
 		WARNING("%s plugin: Empty buffer, nothing to send", PLUGIN_NAME);
 		return 0;
 	}
+
 	while (request_err == 0 && max_attempts_count-- > 0 && success != 0)
 	{
 		/* if running auth for the first time, get auth token */
@@ -593,7 +598,7 @@ static int send_json(yajl_gen *gen)
 	if (success != 0 && max_attempts_count <= 0)
 	{
 		/* TODO: handle auth error */
-		ERROR("%s plugin: Blueflood server respnsed with auth error",
+		ERROR("%s plugin: Blueflood server responded with auth error",
 				PLUGIN_NAME );
 	}
 
@@ -690,13 +695,32 @@ static int jsongen_metrics_output(wb_callback_t *cb, const data_set_t *ds,
 			static char name_buffer[MAX_METRIC_NAME_SIZE];
 			metric_format_name(name_buffer, sizeof(name_buffer), vl->host, vl->plugin,
 					   vl->plugin_instance, vl->type, vl->type_instance, data_source->name, ".");
-
 			YAJL_CHECK_RETURN_ON_ERROR(gen_name_kv(cb->yajl_gen, name_buffer));
 			YAJL_CHECK_RETURN_ON_ERROR(gen_metricvalue_kv(cb->yajl_gen, data_source->type, value));
 			YAJL_CHECK_RETURN_ON_ERROR(gen_timestamp_kv(cb->yajl_gen, vl->time));
 			YAJL_CHECK_RETURN_ON_ERROR(gen_ttl_kv(cb->yajl_gen, cb->ttl));
 
 			YAJL_CHECK_RETURN_ON_ERROR(yajl_gen_map_close(cb->yajl_gen));
+
+			/*if number of metrics euqal of configured num metrics - send data*/
+			if (DEFAULT_METRIC_NUM != cb->metric_num)
+			{
+				cb->metrics_count++;
+				if (cb->metrics_count == cb->metric_num)
+				{
+					int err;
+					YAJL_CHECK_RETURN_ON_ERROR(yajl_gen_array_close(cb->yajl_gen));
+
+					err = send_json(&cb->yajl_gen);
+					if (err == 0) /* OK */
+					{
+						cb->successfull_send = 0;
+						err = jsongen_init(&cb->yajl_gen);
+						cb->metrics_count = 0;
+					}
+				}
+			}
+
 		}
 		else
 		{
@@ -828,6 +852,7 @@ static int send_data(user_data_t *user_data)
 	size_t len;
 
 	cb = user_data->data;
+	cb->metrics_count = 0;
 	pthread_mutex_lock(&cb->send_lock);
 	/* finalize json structure if last send was a success */
 	if (cb->successfull_send == 0) /* OK */
@@ -847,8 +872,7 @@ static int send_data(user_data_t *user_data)
 	{
 		cb->successfull_send = 0;
 		err = jsongen_init(&cb->yajl_gen);
-	}
-	else
+	} else
 	{
 		/* if send was not a success then just try to
 		 * resend it next time, do not free yajl
@@ -866,6 +890,7 @@ static int wb_flush(cdtime_t timeout __attribute__((unused)),
 {
 	return send_data(user_data);
 }
+
 
 static int wb_read(user_data_t *user_data)
 {
@@ -904,6 +929,7 @@ static int config_get_url_params(oconfig_item_t *ci, wb_callback_t *cb,
 	if (strcasecmp("URL", ci->key) == 0)
 	{
 		cb->ttl = DEFAULT_TTL;
+		cb->metrics_count = DEFAULT_METRIC_NUM;
 		cf_util_get_string(ci, &data->url);
 		int i = 0;
 		for (i = 0; i < ci->children_num; i++)
@@ -920,6 +946,8 @@ static int config_get_url_params(oconfig_item_t *ci, wb_callback_t *cb,
 			}
 			else if (strcasecmp(CONF_TTL, child->key) == 0)
 				cf_util_get_int(child, &cb->ttl);
+			else if (strcasecmp(CONF_METRIC_NUM, child->key) == 0)
+				cf_util_get_int(child, &cb->metric_num);
 			else if (strcasecmp(CONF_AUTH_URL, child->key) == 0)
 			{
 				config_get_auth_params(child, cb, auth_data);
@@ -1016,11 +1044,12 @@ static int read_config(oconfig_item_t *ci)
 	/* register read plugin to ensure that data will be sent
 	 * on each configured interval */
 	plugin_register_complex_read(NULL, PLUGIN_NAME, wb_read, NULL, &user_data);
+	INFO("%s plugin: read callback registered", PLUGIN_NAME);
 
 	user_data.free_func = wb_callback_free;
 	plugin_register_write(PLUGIN_NAME, wb_write, &user_data);
+	INFO("%s plugin: write callback registered", PLUGIN_NAME);
 
-	INFO("%s plugin: read/write callback registered", PLUGIN_NAME);
 
 	return (0);
 }
