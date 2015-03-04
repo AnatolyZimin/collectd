@@ -164,13 +164,16 @@ int plugin_register_complex_config (const char *type,
 {
 	oconfig_item_t *config;
 	oconfig_item_t *nested_config;
+#ifdef ENABLE_METRIC_NUM
+	int children_num = 3;
+#else
 #ifdef ENABLE_AUTH_CONFIG
 	oconfig_item_t *nested_authconfig;
 	int children_num = 3;
 #else
 	int children_num = 2;
 #endif
-
+#endif
 	INFO ("plugin_register_complex_config");
 	s_data.type_plugin_name = strdup(type);
 	s_data.plugin_config_cb = callback;
@@ -183,6 +186,10 @@ int plugin_register_complex_config (const char *type,
 	nested_config = alloc_config_children(config, children_num /* tenantdId, ttl, [Auth] */);
 	set_str_config_item(nested_config++, "TenantId", "987654321" );
 	set_int_config_item(nested_config++, "ttlInSeconds", 12345 );
+#ifdef ENABLE_METRIC_NUM
+	INFO("config num metric OK");
+	set_int_config_item(nested_config++, "MetricNum", 2 );
+#endif
 #ifdef ENABLE_AUTH_CONFIG
 
 	/* AuthURL */
@@ -249,7 +256,9 @@ int plugin_register_complex_read (const char *group, const char *name,
 {
 	INFO ("plugin_register_complex_read");
 	s_data.user_data = *user_data;
+#ifndef ENABLE_METRIC_NUM
 	s_data.plugin_read_cb = callback;
+#endif
 	return 0;	
 }
 
@@ -409,6 +418,7 @@ int generate_write_metrics(struct callbacks_blueflood *callback_data, int metric
 	value_list.values = malloc(sizeof(value_t)*metrics_count);
 
 	fill_data_values_set(&data_set, &value_list, metrics_count);
+	INFO("%s plugin: read callback registered", PLUGIN_NAME);
 	err=callback_data->plugin_write_cb( &data_set, &value_list, &callback_data->user_data);
 	free_dataset(&data_set, &value_list);
 	return err;
@@ -486,14 +496,21 @@ void mock_test_9_auth_yajl_tree_parse_error_errbuffer_not_null();
 void mock_test_10_auth_curl_easy_getinfo_error_second_attempt();
 void mock_test_11_config_user_data_alloc_error();
 void mock_test_12_auth_curl_callback_realloc_error();
+void mock_test_13_jsongen_metrics_output();
 int main()
 {
 	/* functional tests */
+#ifndef ENABLE_METRIC_NUM
 #ifndef ENABLE_MOCK_TESTS
 	functional_one_big_write();
 	functional_two_writes();
 	functional_two_hundred_writes();
 	functional_notifications_write();
+#endif
+#endif
+
+#ifdef ENABLE_METRIC_NUM
+	mock_test_13_jsongen_metrics_output();
 #endif
 
 #ifdef ENABLE_MOCK_TESTS
@@ -873,4 +890,20 @@ void mock_test_12_auth_curl_callback_realloc_error()
 	template_end();
 }
 
+
 #endif /*ENABLE_MOCK_TESTS*/
+
+
+#ifdef ENABLE_METRIC_NUM
+void mock_test_13_jsongen_metrics_output()
+{
+	int err;
+	init_mock_test(6);
+	template_begin(CB_CONFIG_OK, CB_INIT_OK);
+	err = generate_write_metrics(&s_data, 4);
+	assert(err==0);
+	err = s_data.plugin_flush_cb(0, "", &s_data.user_data);
+	assert(err==0);
+	template_end();
+}
+#endif
